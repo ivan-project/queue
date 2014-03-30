@@ -1,0 +1,10 @@
+{
+    "name": "ivan-queue",
+    "version": "0.0.1",
+    "scripts": {
+        "start": "node app"
+    },
+    "dependencies": {
+        "amqplib": "*"
+    }
+}
