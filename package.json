@@ -5,6 +5,7 @@
         "start": "node app"
     },
     "dependencies": {
-        "amqplib": "*"
+        "amqplib": "*",
+        "mongodb": "*"
     }
 }
