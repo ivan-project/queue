@@ -1,4 +1,5 @@
 var open = require('amqplib').connect('amqp://localhost');
+var crypto = require('crypto');
 
 var q = 'tasks';
 
@@ -15,7 +16,9 @@ open.then(function (conn) {
         };
         
         ch.assertQueue(q);
-        ch.sendToQueue(q, new Buffer(JSON.stringify(jsonStr)));
+        ch.sendToQueue(q, new Buffer(JSON.stringify(jsonStr)), {
+            messageId: crypto.randomBytes(20).toString('hex')
+        });
     });
     return ok;
 }).then(null, console.warn);
