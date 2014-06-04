@@ -1,12 +1,14 @@
 var spawn = require('child_process').spawn;
-var open = require('amqplib').connect('amqp://localhost');
-var fs = require('fs');
-var MongoClient = require('mongodb').MongoClient;
+var amqplib = require('amqplib');
+var fs = require("fs");
+var mongo = require('mongodb');
+var MongoClient = mongo.MongoClient;
+var Grid = require('gridfs-stream');
 
 var q = 'tasks';
 
 var deleteFolderRecursive = function(path) {
-    if (fs.existsSync(path)) {
+    /*if (fs.existsSync(path)) {
         fs.readdirSync(path).forEach(function(file,index){
             var curPath = path + "/" + file;
             
@@ -17,16 +19,20 @@ var deleteFolderRecursive = function(path) {
             }
         });
         fs.rmdirSync(path);
-    }
+    }*/
 };
 
 // Consumer
-open.then(function (conn) {
+amqplib.connect('amqp://localhost').then(function (conn) {
+    console.log("Connected to the queue...");
+    
     MongoClient.connect('mongodb://127.0.0.1:27017/ivan', function(err, db) {
         if (err) { throw err; }
+        console.log("Connected to the database...");
         
         var ok = conn.createChannel();
         ok = ok.then(function (ch) {
+            console.log("Queue channel selected...");
             ch.assertQueue(q);
             ch.consume(q, function (msg) {
                 if (msg !== null) {
@@ -34,6 +40,7 @@ open.then(function (conn) {
                     var jsonMsg = JSON.parse(msg.content.toString());
                     
                     var tmpDir = "/tmp/"+msg.properties.messageId;
+                    deleteFolderRecursive(tmpDir);
                     fs.mkdirSync(tmpDir);
                     
                     var completeJob = function () {
@@ -42,36 +49,71 @@ open.then(function (conn) {
                         deleteFolderRecursive(tmpDir);
                     };
 
-                    db.collection('documents').findOne({ _id: new require('mongodb').ObjectID(jsonMsg.documentId) }, function(err, doc) {
+                    var collection = db.collection('documents');
+                    var gfs = Grid(db, mongo);
+
+                    collection.findOne({ _id: new require('mongodb').ObjectID(jsonMsg.documentId) }, function(err, doc) {
                         if (err) {
                             console.warn(err);
                             return false;
                         }
                         
+                        gfs.files.find({ filename: doc.originFile }).toArray(function (err, files) {
+                            if (err) {
+                                console.log("Takie plynne frytki");
+                                process.exit(-1);
+                            }
+                            var files[] = file;
+                        })
+                        
+                        var readstream = gfs.createReadStream({
+                            filename: doc.originFile
+                        });
+                        
+                        readstream.on('error', function (err) {
+                            console.log('An error occurred!', err);
+                            throw err;
+                        });
+                        
+                        var writeable = fs.createWriteStream( "/tmp/"+msg.properties.messageId+'/input');
+                        
+                        readstream.pipe(writeable);
+                        
+                        
+                        writeable.on('close', function (file) {
+                            console.log(file);
+                        });
+                        
                         switch (jsonMsg.type) {
-                            case "testing":
-                                console.log(jsonMsg.payload.msg);
-                                
-                                completeJob();
-                                break;
-                            case "process":
-                                
+                            case "plaintext":
+                                /*var prc;
                                 switch (jsonMsg.payload.fileType) {
-                                    case "pdf":
+                                    "pdf":
                                         var prc = spawn('pdftotext',  [tmpDir+'/input.pdf', tmpDir+'/plain.txt']);
                                         break;
-                                    case "docx":
+                                    "docx":
                                         var prc = spawn('docx2txt.pl',  [tmpDir+'/input.docx', tmpDir+'/plain.txt']);
                                         break;
                                 }
                                 prc.on('close', function (code) {
                                     if (code == 0) {
+                                        fs.readFile(tmpDir+'/plain.txt', 'utf8', function (err, data) {
+                                            if (err) {
+                                                return console.log(err);
+                                            }
+                                            console.log(data);
+                                            
+                                            var sentences = data.split(/(?<=[.?!])\s+(?=[a-z])/i);
+                                            
+                                            
+                                            
+                                            completeJob();
+                                        });
                                         
                                     } else {
-
+                                        completeJob();
                                     }
-                                    completeJob();
-                                });
+                                });*/
                                 break;
                             case "lemmatize":
                                 
@@ -83,6 +125,10 @@ open.then(function (conn) {
                 }
             });
         });
-        return ok;
+        
+        //return ok;
     });
-}).then(null, console.warn);
+}).then(null, function (err) {
+    console.warn(err);
+    process.exit(-1);
+});
