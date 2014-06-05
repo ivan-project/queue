@@ -49,7 +49,8 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                             authors: ["Jan Kowalski"],
                             type: "thesis", // thesis|source
                             status: "uploaded",
-                            originFile: fileId+'.pdf'
+                            originFile: fileId+'.pdf',
+                            fileDocument: file._id
                         }, {w: 1}, function (err, records){
                             console.log("Created new document #"+records[0]._id+"\n");
                             
@@ -63,8 +64,7 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                             ch.sendToQueue(q, new Buffer(JSON.stringify(jsonStr)), {
                                 messageId: crypto.randomBytes(20).toString('hex')
                             });
-                            
-                            //process.exit(0);
+
                         });
                         
                     });
