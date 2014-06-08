@@ -2,6 +2,7 @@ var spawn = require('child_process').spawn;
 var amqplib = require('amqplib');
 var fs = require("fs");
 var mongo = require('mongodb');
+var crypto = require('crypto');
 var MongoClient = mongo.MongoClient;
 var Grid = require('gridfs-stream');
 
@@ -9,12 +10,12 @@ var q = 'tasks';
 
 var deleteFolderRecursive = function(path) {
     if (fs.existsSync(path)) {
-        fs.readdirSync(path).forEach(function(file,index){
+        fs.readdirSync(path).forEach(function (file,index) {
             var curPath = path + "/" + file;
-            
-            if(fs.lstatSync(curPath).isDirectory()) {
+
+            if (fs.lstatSync(curPath).isDirectory()) {
                 deleteFolderRecursive(curPath);
-            } else { // delete file
+            } else {
                 fs.unlinkSync(curPath);
             }
         });
@@ -25,11 +26,11 @@ var deleteFolderRecursive = function(path) {
 // Consumer
 amqplib.connect('amqp://localhost').then(function (conn) {
     console.log("Connected to the queue...");
-    
+
     MongoClient.connect('mongodb://127.0.0.1:27017/ivan', function(err, db) {
         if (err) { throw err; }
         console.log("Connected to the database...");
-        
+
         var ok = conn.createChannel();
         ok = ok.then(function (ch) {
             console.log("Queue channel selected...");
@@ -38,14 +39,14 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                 if (msg !== null) {
                     console.log("Starting job: "+msg.properties.messageId);
                     var jsonMsg = JSON.parse(msg.content.toString());
-                    
+
                     var tmpDir = "/tmp/"+msg.properties.messageId;
                     deleteFolderRecursive(tmpDir);
                     fs.mkdirSync(tmpDir);
-                    
+
                     var completeJob = function () {
                         ch.ack(msg);
-                    
+
                         deleteFolderRecursive(tmpDir);
                     };
 
@@ -57,18 +58,15 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                             console.warn(err);
                             return false;
                         }
-                        
-                        //console.log(doc);
-                        
+
                         switch (jsonMsg.type) {
                             case "plaintext":
-                                
                                 gfs.collection('uploaded_files').findOne({ _id: doc.fileDocument }, function(err, file) {
                                     if (err) {
                                         console.log("Takie plynne frytki");
-                                        process.exit(-1);
+                                        return false;
                                     }
-                                    
+
                                     console.log(file);
 
                                     var readstream = gfs.createReadStream({
@@ -80,9 +78,9 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                         console.log('An error occurred!', err);
                                         throw err;
                                     });
-                                    
+
                                     var ext;
-                                    
+
                                     switch (file.contentType) {
                                         case 'application/pdf':
                                             ext = 'pdf';
@@ -114,12 +112,24 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                                     var sentences = data.split(/[.!\?]\s+/igm);
 
                                                     doc.plaintext = sentences.join("\n");
-                                                    
+                                                    doc.status = "text_extracted";
+
                                                     collection.save(doc, function (err) {
                                                         console.log("Completed plaintext");
                                                         completeJob();
+
+                                                        jsonStr = {
+                                                            type: "lemmatize",
+                                                            documentId: doc._id,
+                                                            payload: {}
+                                                        };
+
+                                                        ch.assertQueue(q);
+                                                        ch.sendToQueue(q, new Buffer(JSON.stringify(jsonStr)), {
+                                                            messageId: crypto.randomBytes(20).toString('hex')
+                                                        });
                                                     });
-                                                    
+
                                                 });
 
                                             } else {
@@ -130,16 +140,61 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                 });
                                 break;
                             case "lemmatize":
-                                
-                                completeJob();
+                                fs.writeFile(tmpDir+"/plain.txt", doc.plaintext, function (err) {
+                                    if (err) {
+                                        console.log(err);
+                                        return false;
+                                    }
+
+                                    prc = spawn('make',  ['run', tmpDir+'/plain.txt', tmpDir+'/lemmatized.txt'], {
+                                        cwd: '/var/ivan/lemmatizer'
+                                    });
+
+                                    prc.on('close', function (code) {
+                                        if (code == 0) {
+                                            fs.readFile(tmpDir+'/lemmatized.txt', 'utf8', function (err, data) {
+                                                if (err) {
+                                                    console.log(err);
+                                                    return false;
+                                                }
+
+                                                doc.lemmatized = data;
+                                                doc.status = "lemmatized";
+
+                                                collection.save(doc, function (err) {
+                                                    console.log("Completed lemmatization");
+                                                    completeJob();
+
+                                                    jsonStr = {
+                                                        type: "perform_comparison",
+                                                        documentId: doc._id,
+                                                        payload: {}
+                                                    };
+
+                                                    ch.assertQueue(q);
+                                                    ch.sendToQueue(q, new Buffer(JSON.stringify(jsonStr)), {
+                                                        messageId: crypto.randomBytes(20).toString('hex')
+                                                    });
+                                                });
+
+                                            });
+
+                                        }
+                                    });
+                                });
+                                break;
+                            case "perform_comparison":
+                                break;
+                            case "compare":
+
                                 break;
                         }
                     });
-                    
+
                 }
             });
         });
-        
+
         //return ok;
     });
 }).then(null, function (err) {
