@@ -1,7 +1,7 @@
 IVAN Job Queue
 ==============
 
-Kolekja działa automatycznie na maszynie wirtualnej dzięki daemonowi `supervisord`. *todo*
+Kolekja działa automatycznie na maszynie wirtualnej dzięki daemonowi `supervisord`.
 
 **Zarządzanie daemonem**:
 
