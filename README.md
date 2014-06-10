@@ -111,7 +111,7 @@ Wywołanie przetwarzania pliku binarnego (PDF/DOCX) do formatu czystego tekstu o
 
 ```json
 {
-    "status": "text_extracted",
+    "status": 10,
     "plaintext": "TREŚĆ DOKUMENTU",
 }
 ```
@@ -136,9 +136,76 @@ Wywołanie lematyzatora i zapis zlematyzowanego tekstu do dokumentu.
 
 ```json
 {
-    "status": "lemmatized",
+    "status": 20,
     "lemmatized": "ZLEMATYZOWANY TEKST",
 }
 ```
 
+### Znalezienie dokumentów do porównania
 
+#### JSON zadania
+
+```json
+{
+    "type": "perform_comparison",
+    "documentId": "ID DOKUMENTU Z MONGO",
+    "payload": {}
+}
+```
+
+#### Działanie
+
+Reset liczników porównywania, znalezienie zlematyzowanych tekstów w bazie u dodanie zadań
+
+#### Zmienione pola dokumentu
+
+```json
+{
+    "status": 30,
+    "comparison": {
+        "completed": 0,
+        "total": // ilosc znalezionych dokumentow do porownania
+    }
+}
+```
+
+### Porównanie dwóch dokumentów
+
+#### JSON zadania
+
+```json
+{
+    "type": "compare",
+    "documentId": "ID DOKUMENTU Z MONGO",
+    "payload": {
+        "compareTo": "ID POROWNYWANEGO DOKUMENTU MONGO"
+    }
+}
+```
+
+#### Działanie
+
+Wywołuje moduł `diff` na dokumencie wywołującym porównanie i na porównywanym, zwiększa ich liczniki porównywań oraz zapisuje porównanie w kolekcji `comparisons`.
+
+#### Zmienione pola dokumentu
+
+##### Dokument, który wywołał porównanie:
+
+```json
+{
+    "comparison": {
+        "completed": // zwiekszenie liczby skonczonych dokumentow o jeden
+    }
+}
+```
+
+##### Dokument porównywany
+
+```json
+{
+    "comparison": {
+        "completed": ,// zwiekszenie liczby skonczonych dokumentow o jeden
+        "total": // zwiekszenie liczby wszystkich dokumentow o jeden
+    }
+}
+```
