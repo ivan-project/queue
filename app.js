@@ -39,7 +39,8 @@ amqplib.connect('amqp://localhost').then(function (conn) {
             ch.assertQueue(q);
             ch.consume(q, function (msg) {
                 if (msg !== null) {
-                    console.log("Starting job: "+msg.properties.messageId);
+                    var jobID = msg.properties.messageId.substring(0, 10);
+                    console.log("["+Date.now()+"]["+jobID+"] Starting job");
                     var jsonMsg = JSON.parse(msg.content.toString());
 
                     var tmpDir = "/tmp/"+msg.properties.messageId;
@@ -65,15 +66,13 @@ amqplib.connect('amqp://localhost').then(function (conn) {
 
                         switch (jsonMsg.type) {
                             case "plaintext":
-                                console.log("Extracting plaintext...");
+                                console.log("["+Date.now()+"]["+jobID+"] Extracting plaintext...");
                                 gfs.collection('uploaded_files').findOne({ _id: doc.fileDocument }, function(err, file) {
                                     if (err) {
-                                        console.log("Takie plynne frytki");
+                                        console.log("["+Date.now()+"]["+jobID+"] Takie plynne frytki");
                                         completeJob();
                                         return false;
                                     }
-
-                                    console.log(file);
 
                                     var readstream = gfs.createReadStream({
                                         _id: doc.fileDocument,
@@ -81,7 +80,7 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                     });
 
                                     readstream.on('error', function (err) {
-                                        console.log('An error occurred!', err);
+                                        console.log("["+Date.now()+"]["+jobID+'] An error occurred!', err);
                                         completeJob();
                                         throw err;
                                     });
@@ -125,8 +124,8 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                                     doc.plaintext = sentences.join("\n");
                                                     doc.status = 10;
 
-                                                    collection.save(doc, function (err) {
-                                                        console.log("Completed plaintext");
+                                                    collection.update({ _id: doc._id }, doc, function (err) {
+                                                        console.log("["+Date.now()+"]["+jobID+"] Completed plaintext");
                                                         completeJob();
 
                                                         var jsonStr = {
@@ -151,7 +150,7 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                 });
                                 break;
                             case "lemmatize":
-                                console.log("starting lemmatization...");
+                                console.log("["+Date.now()+"]["+jobID+"] Starting lemmatization...");
                                 fs.writeFile(tmpDir+"/plain.txt", doc.plaintext, function (err) {
                                     if (err) {
                                         console.log(err);
@@ -175,8 +174,8 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                                 doc.lemmatized = data;
                                                 doc.status = 20;
 
-                                                collection.save(doc, function (err) {
-                                                    console.log("Completed lemmatization");
+                                                collection.update({ _id: doc._id }, doc, function (err) {
+                                                    console.log("["+Date.now()+"]["+jobID+"] Completed lemmatization");
                                                     completeJob();
 
                                                     jsonStr = {
@@ -194,7 +193,7 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                             });
 
                                         } else {
-                                            console.log("Lemmatizer exit: "+code);
+                                            console.log("["+Date.now()+"]["+jobID+"] Lemmatizer exit: "+code);
                                             completeJob();
                                             return false;
                                         }
@@ -203,12 +202,10 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                 break;
                             case "perform_comparison":
                                 comparisons.remove({ compared: { $in: [doc._id] } }, function () {
-                                    doc.comparison = {
+                                    collection.update({ _id: doc._id }, { $set: { comparison: {
                                         completed: 0,
                                         total: 0
-                                    };
-
-                                    collection.save(doc, function (err) {
+                                    } } }, function (err) {
                                         collection.find({ _id: { $ne: doc._id }, status: { $gte: 20 } }, function (err, cursor) {
                                             if (err) {
                                                 console.log(err);
@@ -221,12 +218,13 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                                     count = 0;
                                                 }
 
-                                                console.log("Documents found for comparison: "+count);
+                                                console.log("["+Date.now()+"]["+jobID+"] Documents found for comparison: "+count);
 
                                                 doc.comparison = {
                                                     total: count
                                                 };
                                                 doc.status = 30;
+
 
                                                 var jsonStr = {
                                                     type: "compare",
@@ -236,7 +234,7 @@ amqplib.connect('amqp://localhost').then(function (conn) {
 
                                                 function processItem (err, item) {
                                                     if (item === null) {
-                                                        collection.save(doc, function (err) {
+                                                        collection.update({ _id: doc._id }, { $set: { 'comparison.total': count, status: 30 } }, function (err) {
                                                             completeJob();
                                                         });
                                                         return true;
@@ -265,11 +263,11 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                 });
                                 break;
                             case "compare":
-                                console.log("Starting the compare");
+                                console.log("["+Date.now()+"]["+jobID+"] Starting the compare");
 
                                 collection.findOne({ _id: new ObjectID(jsonMsg.payload.compareTo) }, function (err, compareToDoc) {
                                     if (err) {
-                                        console.log("Document "+jsonMsg.payload.compareTo+" could not be found, aborting");
+                                        console.log("["+Date.now()+"]["+jobID+"] Document "+jsonMsg.payload.compareTo+" could not be found, aborting");
                                         completeJob();
                                         return false;
                                     }
@@ -302,14 +300,6 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                                         }
 
                                                         doc.comparison.completed++;
-                                                        if (typeof compareToDoc.comparison == "undefined") {
-                                                            compareToDoc.comparison = {
-                                                                completed: 0,
-                                                                total: 0
-                                                            };
-                                                        }
-                                                        compareToDoc.comparison.completed++;
-                                                        compareToDoc.comparison.total++;
 
                                                         var jsonResult = JSON.parse(data);
 
@@ -322,17 +312,17 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                                         };
 
                                                         comparisons.save(compareDoc, function (err) {
-                                                            collection.save(doc, function (err) {
-                                                                collection.save(compareToDoc, function (err) {
+                                                            collection.update({ _id: doc._id }, { $inc: { 'comparison.completed': 1 } }, function (err) {
+                                                                collection.update({ _id: compareToDoc._id }, { $inc: { 'comparison.completed': 1, 'comparison.total': 1 } }, function (err) {
                                                                     completeJob();
-                                                                    console.log("Completed compare of "+doc._id+" and "+compareToDoc._id+"");
+                                                                    console.log("["+Date.now()+"]["+jobID+"] Completed compare of "+doc._id+" and "+compareToDoc._id+"");
                                                                 });
                                                             });
                                                         });
 
                                                     });
                                                 } else {
-                                                    console.log("Diff exit: "+code);
+                                                    console.log("["+Date.now()+"]["+jobID+"] Diff exit: "+code);
                                                     completeJob();
                                                     return false;
                                                 }
