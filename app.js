@@ -64,12 +64,24 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                             return false;
                         }
 
+                        if (!doc) {
+                            console.warn("["+Date.now()+"]["+jobID+"] No document: "+jsonMsg.documentId);
+                            completeJob();
+                            return false;
+                        }
+
                         switch (jsonMsg.type) {
                             case "plaintext":
                                 console.log("["+Date.now()+"]["+jobID+"] Extracting plaintext...");
                                 gfs.collection('uploaded_files').findOne({ _id: doc.fileDocument }, function(err, file) {
                                     if (err) {
                                         console.log("["+Date.now()+"]["+jobID+"] Takie plynne frytki");
+                                        completeJob();
+                                        return false;
+                                    }
+
+                                    if (!file) {
+                                        console.warn("["+Date.now()+"]["+jobID+"] No file: "+doc.fileDocument);
                                         completeJob();
                                         return false;
                                     }
@@ -272,6 +284,12 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                         return false;
                                     }
 
+                                    if (!compareToDoc) {
+                                        console.log("["+Date.now()+"]["+jobID+"] Document "+jsonMsg.payload.compareTo+" could not be found, aborting");
+                                        completeJob();
+                                        return false;
+                                    }
+
                                     fs.writeFile(tmpDir+"/a.txt", doc.lemmatized, function (err) {
                                         if (err) {
                                             console.log(err);
@@ -330,6 +348,10 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                         });
                                     });
                                 });
+                                break;
+                            default:
+                                console.warn("["+Date.now()+"]["+jobID+"] no type"+jsonMsg.type);
+                                completeJob();
                                 break;
                         }
                     });

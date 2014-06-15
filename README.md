@@ -19,6 +19,11 @@ $ rabbitmqadmin purge queue name=tasks
 
 *todo*
 
+**Logi działania**
+
+* `/var/log/supervisor/program_ivan_queue.error` - błędy wykonania
+* `/var/log/supervisor/program_ivan_queue.log` - działanie kolejki
+
 Format dokumentu MognoDB z pracą
 --------------------------------
 
@@ -86,6 +91,10 @@ db.comparisons.find({ compared: { $in: [ MongoId("ABCDEF") ] } })
 
 Zadania kolejki
 ---------------
+
+Kolejka implementuje protokół AMQP z wykorzystaniem RabbitMQ jako serwera kolejki.
+
+Zadania powinny być umieszczane w kolejce o nazwie `tasks`.
 
 ### Identyfikator zadania
 
