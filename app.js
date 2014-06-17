@@ -170,7 +170,7 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                         return false;
                                     }
 
-                                    prc = spawn('make',  ['run', tmpDir+'/plain.txt', tmpDir+'/lemmatized.txt'], {
+                                    prc = spawn('./run.sh', [tmpDir+'/plain.txt', tmpDir+'/lemmatized.txt'], {
                                         cwd: '/var/ivan/lemmatizer'
                                     });
 
@@ -305,7 +305,11 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                             }
 
                                             prc = spawn('ruby1.9.3',  ['comparator.rb', tmpDir+'/a.txt', tmpDir+'/b.txt', tmpDir+'/out.txt'], {
-                                                cwd: '/var/ivan/diff'
+                                                cwd: '/var/ivan/diff',
+                                                env: {
+                                                    'PWD': '/var/ivan/diff',
+                                                    'LC_ALL': 'en_US'
+                                                }
                                             });
 
                                             prc.on('close', function (code) {
