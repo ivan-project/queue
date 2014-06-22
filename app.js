@@ -225,7 +225,11 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                         completed: 0,
                                         total: 0
                                     } } }, function (err) {
-                                        collection.find({ _id: { $ne: doc._id }, status: { $gte: 20 } }, function (err, cursor) {
+                                        var query = { _id: { $ne: doc._id }, status: { $gte: 20 } };
+                                        if (doc.type == "book") {
+                                            query.type = { $ne: "book" };
+                                        }
+                                        collection.find(query, function (err, cursor) {
                                             if (err) {
                                                 console.log(err);
                                                 completeJob();
