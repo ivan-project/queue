@@ -123,37 +123,44 @@ amqplib.connect('amqp://localhost').then(function (conn) {
                                         }
                                         prc.on('close', function (code) {
                                             if (code == 0) {
-                                                fs.readFile(tmpDir+'/plain.txt', 'utf8', function (err, data) {
-                                                    if (err) {
-                                                        return console.log(err);
+                                                prc = spawn('php',  ['/var/ivan/queue/split.php', tmpDir+'/plain.txt', tmpDir+'/split.txt']);
+
+                                                prc.on('close', function (code) {
+                                                    if (code == 0) {
+                                                        fs.readFile(tmpDir+'/split.txt', 'utf8', function (err, data) {
+                                                            if (err) {
+                                                                return console.log(err);
+                                                                completeJob();
+                                                            }
+
+                                                            data = data.replace(/[\n\r]+/gm, ' ');
+                                                            data = data.replace(/\s{2,}/gm, ' ');
+                                                            var sentences = data.split(/[.!\?]\s+/igm);
+
+                                                            doc.plaintext = sentences.join("\n");
+                                                            doc.status = 10;
+
+                                                            collection.update({ _id: doc._id }, doc, function (err) {
+                                                                console.log("["+Date.now()+"]["+jobID+"] Completed plaintext");
+                                                                completeJob();
+
+                                                                var jsonStr = {
+                                                                    type: "lemmatize",
+                                                                    documentId: doc._id,
+                                                                    payload: {}
+                                                                };
+
+                                                                ch.assertQueue(q);
+                                                                ch.sendToQueue(q, new Buffer(JSON.stringify(jsonStr)), {
+                                                                    messageId: crypto.randomBytes(20).toString('hex')
+                                                                });
+                                                            });
+
+                                                        });
+                                                    } else {
                                                         completeJob();
                                                     }
-
-                                                    data = data.replace(/[\n\r]+/gm, ' ');
-                                                    data = data.replace(/\s{2,}/gm, ' ');
-                                                    var sentences = data.split(/[.!\?]\s+/igm);
-
-                                                    doc.plaintext = sentences.join("\n");
-                                                    doc.status = 10;
-
-                                                    collection.update({ _id: doc._id }, doc, function (err) {
-                                                        console.log("["+Date.now()+"]["+jobID+"] Completed plaintext");
-                                                        completeJob();
-
-                                                        var jsonStr = {
-                                                            type: "lemmatize",
-                                                            documentId: doc._id,
-                                                            payload: {}
-                                                        };
-
-                                                        ch.assertQueue(q);
-                                                        ch.sendToQueue(q, new Buffer(JSON.stringify(jsonStr)), {
-                                                            messageId: crypto.randomBytes(20).toString('hex')
-                                                        });
-                                                    });
-
                                                 });
-
                                             } else {
                                                 completeJob();
                                             }
